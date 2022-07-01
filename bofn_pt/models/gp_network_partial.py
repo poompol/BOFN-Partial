@@ -1,171 +1,262 @@
-#! /usr/bin/env python3
-
-r"""
-Gaussian Process Network Partial
-"""
-
-from __future__ import annotations
+import numpy as np
+import os
+import sys
+import time
 import torch
-from typing import Any
-from botorch.models.model import Model
-from botorch.models import SingleTaskGP
-from botorch import fit_gpytorch_model
-from botorch.posteriors import Posterior
-from gpytorch.mlls import ExactMarginalLogLikelihood
+import pygad
+from botorch.acquisition import ExpectedImprovement, qExpectedImprovement
+from botorch.acquisition import PosteriorMean as GPPosteriorMean
+from botorch.sampling.samplers import SobolQMCNormalSampler
 from torch import Tensor
+from typing import Callable, List, Optional
+
+from bofn_pt.utils.generate_initial_design import generate_initial_design
+from botorch import fit_gpytorch_model
+from botorch.models import SingleTaskGP
+from gpytorch.mlls import ExactMarginalLogLikelihood
+
+from bofn_pt.models.gp_network_partial import GaussianProcessNetworkPartial
+from bofn_pt.utils.posterior_mean import PosteriorMean
+from bofn_pt.acquisition_function_optimization.optimize_acqf import optimize_acqf_and_get_suggested_point
 from botorch.models.transforms import Standardize
 
+import os
+import time
+from contextlib import ExitStack
+from torch.quasirandom import SobolEngine
+import gpytorch
+import gpytorch.settings as gpts
+from botorch.generation import MaxPosteriorSampling
+from gpytorch.kernels import MaternKernel, RFFKernel, ScaleKernel
 
-class GaussianProcessNetworkPartial(Model):
-    def __init__(self, train_X, train_Y_output_first_layer, train_Y_input_second_layer, train_Z,first_layer_GPs=None, second_layer_GP=None,normalization_constant_upper=None, normalization_constant_lower=None) -> None:
-        super(Model, self).__init__()
-        self.train_X = train_X
-        self.train_Y_output_first_layer = train_Y_output_first_layer
-        self.train_Y_input_second_layer = train_Y_input_second_layer
-        self.train_Z = train_Z
-        self.n_first_layer_nodes = train_Y_output_first_layer.shape[1]
-        if first_layer_GPs is not None:
-            self.first_layer_GPs = first_layer_GPs
+device = torch.device("cpu")
+dtype = torch.double
+def bofn_pt_trial(
+        problem: str,
+        algo: str,
+        trial: int,
+        n_init_evals: int,
+        n_bo_iter: int,
+        function_network: Callable,
+        input_dim: int,
+        network_to_objective_transform: Callable,
+        n_first_batch: int,
+        n_second_batch: int
+) -> None:
+    # Get script directory
+    script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+    results_folder = script_dir + "/results/" + problem + "/" + algo + "/"
+
+    # Initial evaluations
+    X = generate_initial_design(
+        num_samples=n_init_evals, input_dim=input_dim, seed=trial
+    )
+    network_output_at_X = function_network(X)
+    objective_at_X = network_to_objective_transform(network_output_at_X)
+
+    first_layer_input = X
+    first_layer_output = network_output_at_X[:,:-1]
+    n_first_layer_nodes = first_layer_output.shape[1]
+    # Current Best Objective value
+    best_obs_val = objective_at_X.max().item()
+
+    # Historical best observed objective values and running times
+    hist_best_obs_vals = [best_obs_val]
+    runtimes = []
+
+    init_batch_id = 1
+    for iteration in range(init_batch_id, n_bo_iter+1):
+        print("Experiment: " + problem)
+        print("Method: " + algo)
+        print("Trial: " + str(trial))
+        print("Iteration: " + str(iteration))
+
+        t0 = time.time()
+        objective_at_X=objective_at_X.reshape((len(objective_at_X),1))
+        # There are 6 algorithms considered Random (RAND), BO with Thompson Sampling acqf (TS),
+        # 4 variants of BO with EIFN acqf 
+        # 1) NoCL: Partially update GP models in first layer nodes (No constant liar)
+        # 2) CLMAX: Update GP models in first layer functions using real evaluations and update GP model in second layer function using Constant Liar (current maximum)
+        # 3) CLMIN: Update GP models in first layer functions using real evaluations and update GP model in second layer function using Constant Liar (current minimum)
+        # 4) CLMEAN: Update GP models in first layer functions using real evaluations and update GP model in second layer function using Constant Liar (posterior mean of GP model for a second layer function using observations that are actually evaluated)
+        if algo == "RAND":
+            second_batch = torch.rand([n_second_batch, input_dim])
+        elif algo == "TS":
+            second_batch = generate_batch_thompson(first_layer_input=first_layer_input,
+            first_layer_output=first_layer_output,second_layer_input=first_layer_output,
+            second_layer_output=objective_at_X,batch_size=n_second_batch,n_candidates=500,
+            network_to_objective_transform=network_to_objective_transform)
+            y_at_new_point = function_network(second_batch)[:, :-1].clone()
+            first_layer_input = torch.cat((first_layer_input,second_batch),0)
+            first_layer_output = torch.cat((first_layer_output,y_at_new_point),0)
         else:
-            self.first_layer_GPs = [None for k in range(self.n_first_layer_nodes)]
-            self.first_layer_mlls = [None for k in range(self.n_first_layer_nodes)]
-            for k in range(self.n_first_layer_nodes):
-                train_X_first_layer_node_k = train_X
-                train_Y_first_layer_k = train_Y_output_first_layer[..., [k]]
-                self.first_layer_GPs[k] = SingleTaskGP(train_X=train_X_first_layer_node_k, train_Y=train_Y_first_layer_k,outcome_transform=Standardize(m=1))
-                self.first_layer_mlls[k] = ExactMarginalLogLikelihood(self.first_layer_GPs[k].likelihood,self.first_layer_GPs[k])
-                fit_gpytorch_model(self.first_layer_mlls[k])
-        if second_layer_GP is not None:
-            self.second_layer_GP = second_layer_GP
-            self.normalization_constant_upper = normalization_constant_upper
-            self.normalization_constant_lower =normalization_constant_lower
-        else:
-            self.normalization_constant_upper=[None for i in range(self.n_first_layer_nodes)]
-            self.normalization_constant_lower=[None for i in range(self.n_first_layer_nodes)]
-            aux = train_Y_input_second_layer.clone()
-            for i in range(self.n_first_layer_nodes):
-                self.normalization_constant_upper[i] = torch.max(aux[...,i])
-                self.normalization_constant_lower[i] = torch.min(aux[...,i])
-                aux[...,i] = (aux[..., i] - self.normalization_constant_lower[i])/(self.normalization_constant_upper[i] - self.normalization_constant_lower[i])
-            train_Y_input_second_layer_norm = aux
-            self.second_layer_GP = SingleTaskGP(train_X=train_Y_input_second_layer_norm, train_Y=train_Z,outcome_transform=Standardize(m=1))
-            self.second_layer_mll = ExactMarginalLogLikelihood(self.second_layer_GP.likelihood, self.second_layer_GP)
-            fit_gpytorch_model(self.second_layer_mll)
+            second_layer_input= network_output_at_X[:,:-1].clone()
+            second_layer_output = objective_at_X.clone()
+            second_layer_input_norm = second_layer_input.clone()
+            normal_lower = [None for i in range(n_first_layer_nodes)]
+            normal_upper = [None for i in range(n_first_layer_nodes)]
+            for i in range(n_first_layer_nodes):
+                normal_lower[i]=torch.min(network_output_at_X[...,i])
+                normal_upper[i]=torch.max(network_output_at_X[...,i])
+                second_layer_input_norm[...,i] = (second_layer_input_norm[...,i]-normal_lower[i])/(normal_upper[i]-normal_lower[i])
+            model_second_layer= SingleTaskGP(train_X=second_layer_input_norm, train_Y=objective_at_X,outcome_transform=Standardize(m=1))
+            mll_second_layer = ExactMarginalLogLikelihood(model_second_layer.likelihood, model_second_layer)
+            fit_gpytorch_model(mll_second_layer)
+            for inner_iter in range(n_first_batch):
+                print(f"Choosing first batch point: "+str(inner_iter+1))
+                new_point = get_first_batch(first_layer_input=first_layer_input,
+                                                first_layer_output=first_layer_output,
+                                                second_layer_input=second_layer_input,
+                                                second_layer_output=second_layer_output,
+                                                network_to_objective_transform=network_to_objective_transform)
+                y_at_new_point = function_network(new_point)[:, :-1].clone()
+                first_layer_input = torch.cat((first_layer_input,new_point),0)
+                first_layer_output = torch.cat((first_layer_output,y_at_new_point),0)
+                y_at_new_point_norm = y_at_new_point.clone()
+                for i in range(n_first_layer_nodes):
+                    y_at_new_point_norm[...,i]=(y_at_new_point_norm[...,i]-normal_lower[i])/(normal_upper[i]-normal_lower[i])
+                if inner_iter == 0:
+                    first_batch = new_point
+                    temp_second_layer_input = y_at_new_point_norm
+                else:
+                    first_batch = torch.cat((first_batch,new_point),0)
+                    temp_second_layer_input = torch.cat((temp_second_layer_input,y_at_new_point_norm),0)
+                if algo == "CLMAX":
+                    CL = objective_at_X.max()
+                    second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
+                    second_layer_output = torch.cat((second_layer_output,CL.reshape(1,1)),0)
+                elif algo == "CLMIN":
+                    CL = objective_at_X.min()
+                    second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
+                    second_layer_output = torch.cat((second_layer_output,CL.reshape(1,1)),0)
+                elif algo == "CLMEAN":
+                    CL = model_second_layer.posterior(y_at_new_point_norm).mean.item()
+                    second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
+                    second_layer_output = torch.cat((second_layer_output,torch.tensor(CL).reshape(1,1)),0)
+            second_batch = get_second_batch(first_batch = first_batch, temp_second_layer_input=temp_second_layer_input,
+            model_second_layer=model_second_layer, best_obs_val = best_obs_val, n_second_batch = n_second_batch)
+        t1 = time.time()
+        runtimes.append(t1-t0)
 
+        # Evaluate at new (second) batch
+        network_output_at_new_batch = function_network(second_batch)
+        objective_at_new_batch = network_to_objective_transform(network_output_at_new_batch)
+        objective_at_new_batch = objective_at_new_batch.reshape((objective_at_new_batch.shape[0],1))
 
-    def posterior(self, X: Tensor, observation_noise=False) -> MultivariateNormalNetworkPartial:
-        r"""Computes the posterior over model outputs at the provided points.
-        Args:
-            X: A `(batch_shape) x q x d`-dim Tensor, where `d` is the dimension
-                of the feature space and `q` is the number of points considered
-                jointly.
-            observation_noise: If True, add the observation noise from the
-                likelihood to the posterior. If a Tensor, use it directly as the
-                observation noise (must be of shape `(batch_shape) x q`).
-        Returns:
-            A `GPyTorchPosterior` object, representing a batch of `b` joint
-            distributions over `q` points. Includes observation noise if
-            specified.
-        """
-        return MultivariateNormalNetworkPartial(self.n_first_layer_nodes,self.first_layer_GPs, self.second_layer_GP, X,self.normalization_constant_lower, self.normalization_constant_upper)
+        #Update training data
+        X= torch.cat([X,second_batch],0)
+        network_output_at_X = torch.cat([network_output_at_X,network_output_at_new_batch],0)
+        objective_at_X = torch.cat([objective_at_X,objective_at_new_batch],0)
 
-    def forward(self, x: Tensor) -> MultivariateNormalNetworkPartial:
-        return MultivariateNormalNetworkPartial(self.n_first_layer_nodes,self.first_layer_GPs, self.second_layer_GP, x,self.normalization_constant_lower, self.normalization_constant_upper)
+        #Update historical best observed objective values
+        best_obs_val = objective_at_X.max().item()
+        hist_best_obs_vals.append(best_obs_val)
+        print("Best value found so far: " + str(best_obs_val))
 
-    def condition_on_observations(self, X_new: Tensor, Y_output_first_layer_new: Tensor, Y_input_second_layer_new: Tensor or None, Z_new: Tensor or None, **kwargs: Any) -> Model:
-        r"""Condition the model on new observations.
-        Args:
-            X: A `batch_shape x n' x d`-dim Tensor, where `d` is the dimension of
-                the feature space, `n'` is the number of points per batch, and
-                `batch_shape` is the batch shape (must be compatible with the
-                batch shape of the model).
-            Y: A `batch_shape' x n' x m`-dim Tensor, where `m` is the number of
-                model outputs, `n'` is the number of points per batch, and
-                `batch_shape'` is the batch shape of the observations.
-                `batch_shape'` must be broadcastable to `batch_shape` using
-                standard broadcasting semantics. If `Y` has fewer batch dimensions
-                than `X`, it is assumed that the missing batch dimensions are
-                the same for all `Y`.
-        Returns:
-            A `Model` object of the same type, representing the original model
-            conditioned on the new observations `(X, Y)` (and possibly noise
-            observations passed in via kwargs).
-        """
-        fantasy_first_layer_models = [None for k in range(self.n_first_layer_nodes)]
+        # Save data
+        np.savetxt(results_folder + "X/X_" + str(trial) + ".txt", X.numpy())
+        np.savetxt(results_folder + "network_output_at_X/network_output_at_X_"+str(trial)+".txt",network_output_at_X.numpy())
+        np.savetxt(results_folder + "objective_at_X/objective_at_X_" + str(trial)+".txt",objective_at_X.numpy())
+        np.savetxt(results_folder + "best_obs_vals_"+str(trial)+".txt",np.atleast_1d(hist_best_obs_vals))
+        np.savetxt(results_folder + "runtimes/runtimes_"+str(trial)+".txt",np.atleast_1d(runtimes))
 
-        for k in range(self.n_first_layer_nodes):
-            X_first_layer_node_k = X_new
-            Y_first_layer_node_k = Y_output_first_layer_new[..., [k]]
-            fantasy_first_layer_models[k] = self.first_layer_GPs[k].condition_on_observations(X_first_layer_node_k,Y_first_layer_node_k)
-        if Y_input_second_layer_new is not None and Z_new is not None:
-            aux = Y_input_second_layer_new.clone()
-            for i in range(self.n_first_layer_nodes):
-                aux[...,i] = (aux[..., i] - self.normalization_constant_lower[i])/(self.normalization_constant_upper[i] - self.normalization_constant_lower[i])
-            Y_input_second_layer_new_norm = aux
-            fantasy_second_layer_model = self.second_layer_GP.condition_on_observations(Y_input_second_layer_new_norm,Z_new)
-        else:
-            fantasy_second_layer_model = self.second_layer_GP
+def get_first_batch(
+        first_layer_input: Tensor,
+        first_layer_output: Tensor,
+        second_layer_input: Tensor,
+        second_layer_output: Tensor,
+        network_to_objective_transform: Callable
+)-> Tensor:
+    input_dim = first_layer_input.shape[-1]
 
+    # Model
+    model = GaussianProcessNetworkPartial(train_X = first_layer_input,
+                                          train_Y_output_first_layer = first_layer_output,
+                                          train_Y_input_second_layer = second_layer_input,
+                                          train_Z = second_layer_output)
+    qmc_sample = SobolQMCNormalSampler(num_samples=128)
+    acquisition_function = qExpectedImprovement(
+        model = model,
+        best_f = second_layer_output.max().item(),
+        sampler = qmc_sample,
+        objective = network_to_objective_transform
+    )
+    posterior_mean_function = PosteriorMean(
+        model = model,
+        sampler = qmc_sample,
+        objective = network_to_objective_transform
+    )
+    new_first_batch = optimize_acqf_and_get_suggested_point(
+        acq_func = acquisition_function,
+        bounds=torch.tensor([[0. for i in range(input_dim)],
+                             [1. for i in range(input_dim)]]),
+        batch_size=1,
+        posterior_mean = posterior_mean_function
+    )
 
-        return GaussianProcessNetworkPartial(train_X=X_new, train_Y_output_first_layer=Y_output_first_layer_new,
-                                             train_Y_input_second_layer=Y_input_second_layer_new, train_Z=Z_new,
-                                             first_layer_GPs=fantasy_first_layer_models,
-                                             second_layer_GP=fantasy_second_layer_model,
-                                             normalization_constant_lower=self.normalization_constant_lower, 
-                                             normalization_constant_upper=self.normalization_constant_upper)
+    return new_first_batch
 
+def get_second_batch(first_batch: Tensor,temp_second_layer_input: Tensor,model_second_layer,
+                     best_obs_val: float,n_second_batch: int)-> Tensor:
+    sampler = SobolQMCNormalSampler(num_samples=128)
+    qEI = qExpectedImprovement(model_second_layer, best_obs_val, sampler)
+    n_first_batch = first_batch.shape[0]
+    gene_space = [list(range(n_first_batch)) for i in range(n_second_batch)]
+    def fitness_func(X,solution_idx):
+        selected_tensor = temp_second_layer_input[X,:]
+        fitness_val = qEI(selected_tensor).item()
+        return fitness_val
 
-class MultivariateNormalNetworkPartial(Posterior):
-    def __init__(self, n_first_layer_nodes,first_layer_GPs, second_layer_GP, X,normalization_constant_lower=None,normalization_constant_upper=None):
-        self.first_layer_GPs = first_layer_GPs
-        self.second_layer_GP = second_layer_GP
-        self.X = X
-        self.n_first_layer_nodes = n_first_layer_nodes
-        self.normalization_constant_lower = normalization_constant_lower
-        self.normalization_constant_upper = normalization_constant_upper
+    ga_instance = pygad.GA(num_generations=50,
+                           sol_per_pop=10,
+                           num_genes=n_second_batch,
+                           num_parents_mating=2,
+                           fitness_func=fitness_func,
+                           gene_type=int,
+                           gene_space=gene_space,
+                           allow_duplicate_genes=False)
+    ga_instance.run()
+    selected_indices = ga_instance.best_solution()[0]
+    new_second_batch = first_batch[selected_indices,:].clone()
+    return new_second_batch
 
-    @property
-    def device(self) -> torch.device:
-        r"""The torch device of the posterior."""
-        return "cpu"
-
-    @property
-    def dtype(self) -> torch.dtype:
-        r"""The torch dtype of the posterior."""
-        return torch.double
-
-    @property
-    def event_shape(self) -> torch.Size:
-        r"""The event shape (i.e. the shape of a single sample) of the posterior."""
-        shape = list(self.X.shape)
-        shape[-1] = self.n_first_layer_nodes + 1
-        shape = torch.Size(shape)
-        return shape
-
-    def rsample(self, sample_shape=torch.Size(), base_samples=None):
-        nodes_samples = torch.empty(sample_shape + self.event_shape)
-        nodes_samples = nodes_samples.double()
-        for k in range(self.n_first_layer_nodes):
-            X_node_k = self.X
-            multivariate_normal_at_node_k = self.first_layer_GPs[k].posterior(X_node_k)
-            if base_samples is not None:
-                nodes_samples[..., k] = \
-                multivariate_normal_at_node_k.rsample(sample_shape, base_samples=base_samples[..., [k]])[..., 0]
-            else:
-                nodes_samples[..., k] = multivariate_normal_at_node_k.rsample(sample_shape)[..., 0]
-        X_second_layer = nodes_samples[...,:-1]
-        X_second_layer_norm = X_second_layer.clone()
-        for i in range(self.n_first_layer_nodes):
-            X_second_layer_norm[...,i] = (X_second_layer_norm[...,i]- self.normalization_constant_lower[i])/(self.normalization_constant_upper[i] - self.normalization_constant_lower[i])
-        multivariate_normal_at_second_layer = self.second_layer_GP.posterior(X_second_layer_norm)
-        if base_samples is not None:
-            my_aux = torch.sqrt(multivariate_normal_at_second_layer.variance)
-            if my_aux.ndim == 4:
-                nodes_samples[...,self.n_first_layer_nodes] = (multivariate_normal_at_second_layer.mean + torch.einsum('abcd,a->abcd', torch.sqrt(multivariate_normal_at_second_layer.variance), torch.flatten(base_samples[..., self.n_first_layer_nodes])))[..., 0]
-            elif my_aux.ndim == 5:
-                nodes_samples[...,self.n_first_layer_nodes] = (multivariate_normal_at_second_layer.mean + torch.einsum('abcde,a->abcde', torch.sqrt(multivariate_normal_at_second_layer.variance), torch.flatten(base_samples[..., self.n_first_layer_nodes])))[..., 0]
-            else:
-                print(error)
-        else:
-            nodes_samples[...,self.n_first_layer_nodes]=multivariate_normal_at_second_layer.rsample()[0,..., 0]
-        return nodes_samples
+def generate_batch_thompson(
+    first_layer_input: Tensor,
+    first_layer_output: Tensor,
+    second_layer_input: Tensor,
+    second_layer_output: Tensor,
+    batch_size,
+    n_candidates,
+    network_to_objective_transform,
+    sampler="rff",  # "cholesky", "ciq", "rff"
+    use_keops=False,
+):
+    assert sampler in ("cholesky", "ciq", "rff", "lanczos")
+    assert first_layer_input.min() >= 0.0 and first_layer_input.max() <= 1.0 and torch.all(torch.isfinite(second_layer_output))
+    # Fit a GP model
+    model = GaussianProcessNetworkPartial(train_X = first_layer_input,
+    train_Y_output_first_layer = first_layer_output,
+    train_Y_input_second_layer = second_layer_input,
+    train_Z = second_layer_output)
+    # Draw samples on a Sobol sequence
+    sobol = SobolEngine(first_layer_input.shape[-1], scramble=True)
+    X_cand = sobol.draw(n_candidates).to(dtype=dtype, device=device)
+    # Thompson sample
+    with ExitStack() as es:
+        if sampler == "cholesky":
+            es.enter_context(gpts.max_cholesky_size(float("inf")))
+        elif sampler == "ciq":
+            es.enter_context(gpts.fast_computations(covar_root_decomposition=True))
+            es.enter_context(gpts.max_cholesky_size(0))
+            es.enter_context(gpts.ciq_samples(True))
+            es.enter_context(gpts.minres_tolerance(2e-3))  # Controls accuracy and runtime
+            es.enter_context(gpts.num_contour_quadrature(15))
+        elif sampler == "lanczos":
+            es.enter_context(gpts.fast_computations(covar_root_decomposition=True))
+            es.enter_context(gpts.max_cholesky_size(0))
+            es.enter_context(gpts.ciq_samples(False))
+        elif sampler == "rff":
+            es.enter_context(gpts.fast_computations(covar_root_decomposition=True))
+        thompson_sampling = MaxPosteriorSampling(model=model, replacement=False,objective = network_to_objective_transform)
+        X_next = thompson_sampling(X_cand, num_samples=batch_size)
+    return X_next
