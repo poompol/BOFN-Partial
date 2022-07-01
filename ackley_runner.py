@@ -28,7 +28,7 @@ network_to_objective_transform = lambda Y:Y[...,-1]
 network_to_objective_transform = GenericMCObjective(network_to_objective_transform)
 
 # Run experiment
-# Current possible choices: NoCL, CLMAX, CLMIN, CLMEAN, RAND(capital sensitive) and TS
+# Current algorithms considered: NoCL, CLMAX, CLMIN, CLMEAN, RAND and TS (capital sensitive) 
 algo = 'TS'
 
 # number of candidates in first and second batches, respectively. Second batch candidates are selected from the first one
