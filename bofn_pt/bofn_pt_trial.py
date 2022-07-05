@@ -206,7 +206,7 @@ def get_first_batch(
             posterior_mean = posterior_mean_function
         )
     elif first_batch_algo in ["TS-NoCL", "TS-CLMAX", "TS-CLMIN", "TS-CLMEAN"]:
-        print("To be filled")
+        acquisition_function =
 
     return new_first_batch
 
