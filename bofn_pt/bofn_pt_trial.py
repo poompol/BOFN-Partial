@@ -18,6 +18,7 @@ from gpytorch.mlls import ExactMarginalLogLikelihood
 from bofn_pt.models.gp_network_partial import GaussianProcessNetworkPartial
 from bofn_pt.utils.posterior_mean import PosteriorMean
 from bofn_pt.acquisition_function_optimization.optimize_acqf import optimize_acqf_and_get_suggested_point
+from bofn_pt.acquisition_function_optimization.thompson_acqf import ThompsonSampling
 from botorch.models.transforms import Standardize
 
 import os

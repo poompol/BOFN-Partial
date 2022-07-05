@@ -1,7 +1,7 @@
 from botorch.utils.gp_sampling import GPDraw
 import torch
 
-class thompsonSampling:
+class ThompsonSampling:
     r"""MC-based Thompson Sampling Acquisition Function for Function Network
     """
 
