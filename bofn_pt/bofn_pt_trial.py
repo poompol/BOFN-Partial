@@ -110,6 +110,7 @@ def bofn_pt_trial(
                                                 second_layer_input=second_layer_input,
                                                 second_layer_output=second_layer_output,
                                                 network_to_objective_transform=network_to_objective_transform,
+                                                n_first_layer_nodes=n_first_layer_nodes,
                                                 first_batch_algo=first_batch_algo)
                 y_at_new_point = function_network(new_point)[:, :-1].clone()
                 first_layer_input = torch.cat((first_layer_input,new_point),0)
@@ -174,6 +175,7 @@ def get_first_batch(
         second_layer_input: Tensor,
         second_layer_output: Tensor,
         first_batch_algo: str,
+        n_first_layer_nodes: int,
         network_to_objective_transform: Callable
 )-> Tensor:
     input_dim = first_layer_input.shape[-1]
