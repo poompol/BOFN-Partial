@@ -28,8 +28,11 @@ network_to_objective_transform = lambda Y:Y[...,-1]
 network_to_objective_transform = GenericMCObjective(network_to_objective_transform)
 
 # Run experiment
-# Current possible choices: NoCL, CLMAX, CLMIN, CLMEAN, RAND(capital sensitive) and TS
-algo = 'RAND'
+# First Batch Algo > Current possible choices: EIFN-NoCL/EIFN-CLMAX/EIFN-CLMIN/EIFN-CLMEAN/
+# TS-NoCL/TS-CLMAX/TS-CLMIN/TS-CLMEAN/ None (for RAND)
+first_batch_algo = 'EIFN-NoCL'
+# Second Batch Algo > Current possible choices: qEI/TS/RAND
+second_batch_algo = 'qEI'
 
 # number of candidates in first and second batches, respectively. Second batch candidates are selected from the first one
 n_first_batch = 10
@@ -49,7 +52,8 @@ elif len(sys.argv) == 2:
 
 experiment_manager(
     problem = problem,
-    algo = algo,
+    first_batch_algo = first_batch_algo,
+    second_batch_algo = second_batch_algo,
     first_trial = first_trial,
     last_trial = last_trial,
     n_init_evals = 2 *(input_dim+1),

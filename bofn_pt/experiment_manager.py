@@ -6,7 +6,8 @@ import torch
 from bofn_pt.bofn_pt_trial import bofn_pt_trial
 def experiment_manager(
         problem: str,
-        algo: str,
+        first_batch_algo: str,
+        second_batch_algo: str,
         first_trial: int,
         last_trial: int,
         n_init_evals: int,
@@ -20,7 +21,7 @@ def experiment_manager(
         # Get Directory and creat directory for results
 
         script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
-        results_folder = script_dir + "/results/" + problem + "/" + algo + "/"
+        results_folder = script_dir + "/results/" + problem + "/" + first_batch_algo + "_" + second_batch_algo +"/"
 
         if not os.path.exists(results_folder):
                 os.makedirs(results_folder)
@@ -39,7 +40,8 @@ def experiment_manager(
                         function_network = function_network,
                         network_to_objective_transform = network_to_objective_transform,
                         input_dim = input_dim,
-                        algo = algo,
+                        first_batch_algo = first_batch_algo,
+                        second_batch_algo = second_batch_algo,
                         n_init_evals = n_init_evals,
                         n_bo_iter = n_bo_iter,
                         trial = trial,
