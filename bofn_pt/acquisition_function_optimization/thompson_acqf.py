@@ -1,8 +1,7 @@
-from botorch.acquisition import MCAcquisitionFunction
 from botorch.utils.gp_sampling import GPDraw
 import torch
 
-class thompsonSampling(MCAcquisitionFunction):
+class thompsonSampling:
     r"""MC-based Thompson Sampling Acquisition Function for Function Network
     """
 
@@ -32,10 +31,8 @@ class thompsonSampling(MCAcquisitionFunction):
         self.thompson_second_layer = GPDraw(model=self.second_layer_GP,seed=self.random_seed_seed_layer)
 
     def forward(self, X: Tensor) -> Tensor:
-        ts_vals_first_layer = [None for i in range(self.n_first_layer_nodes)]
+        ts_vals_first_layer = torch.tensor([])
         for i in range(self.n_first_layer_nodes):
-            ts_vals_first_layer[i]= self.thompson_first_layer[i].forward(X=X)
-        ts_vals_first_layer = torch.tensor(ts_vals_first_layer)
-        ts_vals_first_layer = ts_vals_first_layer.reshape((self.n_first_layer_nodes,1))
-        ts_val_second_layer = self.second_layer_function(ts_vals_first_layer)
+            ts_vals_first_layer= torch.cat((ts_vals_first_layer,self.thompson_first_layer[i].forward(X=X).detach()),1)
+        ts_val_second_layer = self.thompson_second_layer.forward(X=ts_vals_first_layer)
         return ts_val_second_layer
