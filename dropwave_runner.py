@@ -29,9 +29,9 @@ network_to_objective_transform = GenericMCObjective(network_to_objective_transfo
 
 # Run experiment
 # First Batch Algo > Current possible choices: EIFN-NoCL/EIFN-CLMAX/EIFN-CLMIN/EIFN-CLMEAN/
-# TS-NoCL/TS-CLMAX/TS-CLMIN/TS-CLMEAN/ None (for RAND)
+# TS-NoCL/TS-CLMAX/TS-CLMIN/TS-CLMEAN/ None (for RAND and TS-Whole)
 first_batch_algo = 'EIFN-NoCL'
-# Second Batch Algo > Current possible choices: qEI/TS/RAND
+# Second Batch Algo > Current possible choices: qEI/TS/RAND/TS-Whole
 second_batch_algo = 'qEI'
 
 # number of candidates in first and second batches, respectively. Second batch candidates are selected from the first one

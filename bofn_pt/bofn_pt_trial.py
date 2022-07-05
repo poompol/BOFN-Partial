@@ -33,7 +33,8 @@ device = torch.device("cpu")
 dtype = torch.double
 def bofn_pt_trial(
         problem: str,
-        algo: str,
+        first_batch_algo: str,
+        second_batch_algo: str,
         trial: int,
         n_init_evals: int,
         n_bo_iter: int,
@@ -45,7 +46,11 @@ def bofn_pt_trial(
 ) -> None:
     # Get script directory
     script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
-    results_folder = script_dir + "/results/" + problem + "/" + algo + "/"
+
+    if first_batch_algo is not None:
+        results_folder = script_dir + "/results/" + problem + "/" + first_batch_algo + "_" + second_batch_algo +"/"
+    else:
+        results_folder = script_dir + "/results/" + problem + "/" + second_batch_algo + "/"
 
     # Initial evaluations
     X = generate_initial_design(
@@ -67,21 +72,17 @@ def bofn_pt_trial(
     init_batch_id = 1
     for iteration in range(init_batch_id, n_bo_iter+1):
         print("Experiment: " + problem)
-        print("Method: " + algo)
+        print("First Batch algo: " + first_batch_algo)
+        print("Second Batch algo: "+ second_batch_algo)
         print("Trial: " + str(trial))
         print("Iteration: " + str(iteration))
 
         t0 = time.time()
         objective_at_X=objective_at_X.reshape((len(objective_at_X),1))
-        # There are 6 algorithms considered Random (RAND), BO with Thompson Sampling acqf (TS),
-        # 4 variants of BO with EIFN acqf 
-        # 1) NoCL: Partially update GP models in first layer nodes (No constant liar)
-        # 2) CLMAX: Update GP models in first layer functions using real evaluations and update GP model in second layer function using Constant Liar (current maximum)
-        # 3) CLMIN: Update GP models in first layer functions using real evaluations and update GP model in second layer function using Constant Liar (current minimum)
-        # 4) CLMEAN: Update GP models in first layer functions using real evaluations and update GP model in second layer function using Constant Liar (posterior mean of GP model for a second layer function using observations that are actually evaluated)
-        if algo == "RAND":
+
+        if first_batch_algo== None and second_batch_algo == "RAND":
             second_batch = torch.rand([n_second_batch, input_dim])
-        elif algo == "TS":
+        elif first_batch_algo== None and second_batch_algo == "TS-Whole":
             second_batch = generate_batch_thompson(first_layer_input=first_layer_input,
             first_layer_output=first_layer_output,second_layer_input=first_layer_output,
             second_layer_output=objective_at_X,batch_size=n_second_batch,n_candidates=500,
@@ -89,7 +90,7 @@ def bofn_pt_trial(
             y_at_new_point = function_network(second_batch)[:, :-1].clone()
             first_layer_input = torch.cat((first_layer_input,second_batch),0)
             first_layer_output = torch.cat((first_layer_output,y_at_new_point),0)
-        else:
+        elif first_batch_algo in ["EIFN-NoCL","EIFN-CLMAX","EIFN-CLMIN","EIFN-CLMEAN"]:
             second_layer_input= network_output_at_X[:,:-1].clone()
             second_layer_output = objective_at_X.clone()
             second_layer_input_norm = second_layer_input.clone()
@@ -108,7 +109,8 @@ def bofn_pt_trial(
                                                 first_layer_output=first_layer_output,
                                                 second_layer_input=second_layer_input,
                                                 second_layer_output=second_layer_output,
-                                                network_to_objective_transform=network_to_objective_transform)
+                                                network_to_objective_transform=network_to_objective_transform,
+                                                first_batch_algo=first_batch_algo)
                 y_at_new_point = function_network(new_point)[:, :-1].clone()
                 first_layer_input = torch.cat((first_layer_input,new_point),0)
                 first_layer_output = torch.cat((first_layer_output,y_at_new_point),0)
@@ -121,20 +123,26 @@ def bofn_pt_trial(
                 else:
                     first_batch = torch.cat((first_batch,new_point),0)
                     temp_second_layer_input = torch.cat((temp_second_layer_input,y_at_new_point_norm),0)
-                if algo == "CLMAX":
+                if first_batch_algo == "EIFN-CLMAX":
                     CL = objective_at_X.max()
                     second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
                     second_layer_output = torch.cat((second_layer_output,CL.reshape(1,1)),0)
-                elif algo == "CLMIN":
+                elif first_batch_algo == "EIFN-CLMIN":
                     CL = objective_at_X.min()
                     second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
                     second_layer_output = torch.cat((second_layer_output,CL.reshape(1,1)),0)
-                elif algo == "CLMEAN":
+                elif first_batch_algo == "EIFN-CLMEAN":
                     CL = model_second_layer.posterior(y_at_new_point_norm).mean.item()
                     second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
                     second_layer_output = torch.cat((second_layer_output,torch.tensor(CL).reshape(1,1)),0)
             second_batch = get_second_batch(first_batch = first_batch, temp_second_layer_input=temp_second_layer_input,
-            model_second_layer=model_second_layer, best_obs_val = best_obs_val, n_second_batch = n_second_batch)
+            model_second_layer=model_second_layer, best_obs_val = best_obs_val,
+            n_second_batch = n_second_batch,second_batch_algo=second_batch_algo)
+        elif first_batch_algo in ["TS-NoCL", "TS-CLMAX", "TS-CLMIN", "TS-CLMEAN"]:
+            print("To be filled")
+        else:
+            print(f"Invalid algorithms")
+
         t1 = time.time()
         runtimes.append(t1-t0)
 
@@ -165,6 +173,7 @@ def get_first_batch(
         first_layer_output: Tensor,
         second_layer_input: Tensor,
         second_layer_output: Tensor,
+        first_batch_algo: str,
         network_to_objective_transform: Callable
 )-> Tensor:
     input_dim = first_layer_input.shape[-1]
@@ -175,37 +184,43 @@ def get_first_batch(
                                           train_Y_input_second_layer = second_layer_input,
                                           train_Z = second_layer_output)
     qmc_sample = SobolQMCNormalSampler(num_samples=128)
-    acquisition_function = qExpectedImprovement(
-        model = model,
-        best_f = second_layer_output.max().item(),
-        sampler = qmc_sample,
-        objective = network_to_objective_transform
-    )
-    posterior_mean_function = PosteriorMean(
-        model = model,
-        sampler = qmc_sample,
-        objective = network_to_objective_transform
-    )
-    new_first_batch = optimize_acqf_and_get_suggested_point(
-        acq_func = acquisition_function,
-        bounds=torch.tensor([[0. for i in range(input_dim)],
-                             [1. for i in range(input_dim)]]),
-        batch_size=1,
-        posterior_mean = posterior_mean_function
-    )
+    if first_batch_algo in ["EIFN-NoCL","EIFN-CLMAX","EIFN-CLMIN","EIFN-CLMEAN"]:
+        acquisition_function = qExpectedImprovement(
+            model = model,
+            best_f = second_layer_output.max().item(),
+            sampler = qmc_sample,
+            objective = network_to_objective_transform
+        )
+        posterior_mean_function = PosteriorMean(
+            model = model,
+            sampler = qmc_sample,
+            objective = network_to_objective_transform
+        )
+        new_first_batch = optimize_acqf_and_get_suggested_point(
+            acq_func = acquisition_function,
+            bounds=torch.tensor([[0. for i in range(input_dim)],
+                                 [1. for i in range(input_dim)]]),
+            batch_size=1,
+            posterior_mean = posterior_mean_function
+        )
+    elif first_batch_algo in ["TS-NoCL", "TS-CLMAX", "TS-CLMIN", "TS-CLMEAN"]:
+        print("To be filled")
 
     return new_first_batch
 
 def get_second_batch(first_batch: Tensor,temp_second_layer_input: Tensor,model_second_layer,
-                     best_obs_val: float,n_second_batch: int)-> Tensor:
-    sampler = SobolQMCNormalSampler(num_samples=128)
-    qEI = qExpectedImprovement(model_second_layer, best_obs_val, sampler)
-    n_first_batch = first_batch.shape[0]
-    gene_space = [list(range(n_first_batch)) for i in range(n_second_batch)]
-    def fitness_func(X,solution_idx):
-        selected_tensor = temp_second_layer_input[X,:]
-        fitness_val = qEI(selected_tensor).item()
-        return fitness_val
+                     best_obs_val: float,n_second_batch: int, second_batch_algo: str)-> Tensor:
+    if second_batch_algo == "qEI":
+        sampler = SobolQMCNormalSampler(num_samples=128)
+        qEI = qExpectedImprovement(model_second_layer, best_obs_val, sampler)
+        n_first_batch = first_batch.shape[0]
+        gene_space = [list(range(n_first_batch)) for i in range(n_second_batch)]
+        def fitness_func(X,solution_idx):
+            selected_tensor = temp_second_layer_input[X,:]
+            fitness_val = qEI(selected_tensor).item()
+            return fitness_val
+    elif second_batch_algo == "TS":
+        print("To be filled")
 
     ga_instance = pygad.GA(num_generations=50,
                            sol_per_pop=10,

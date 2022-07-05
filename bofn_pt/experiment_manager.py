@@ -21,7 +21,11 @@ def experiment_manager(
         # Get Directory and creat directory for results
 
         script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
-        results_folder = script_dir + "/results/" + problem + "/" + first_batch_algo + "_" + second_batch_algo +"/"
+
+        if first_batch_algo is not None:
+                results_folder = script_dir + "/results/" + problem + "/" + first_batch_algo + "_" + second_batch_algo + "/"
+        else:
+                results_folder = script_dir + "/results/" + problem + "/" + second_batch_algo + "/"
 
         if not os.path.exists(results_folder):
                 os.makedirs(results_folder)
