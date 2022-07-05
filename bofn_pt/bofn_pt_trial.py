@@ -18,6 +18,7 @@ from gpytorch.mlls import ExactMarginalLogLikelihood
 from bofn_pt.models.gp_network_partial import GaussianProcessNetworkPartial
 from bofn_pt.utils.posterior_mean import PosteriorMean
 from bofn_pt.acquisition_function_optimization.optimize_acqf import optimize_acqf_and_get_suggested_point
+from botorch.models.transforms import Standardize
 
 import os
 import time
@@ -98,7 +99,7 @@ def bofn_pt_trial(
                 normal_lower[i]=torch.min(network_output_at_X[...,i])
                 normal_upper[i]=torch.max(network_output_at_X[...,i])
                 second_layer_input_norm[...,i] = (second_layer_input_norm[...,i]-normal_lower[i])/(normal_upper[i]-normal_lower[i])
-            model_second_layer= SingleTaskGP(train_X=second_layer_input_norm, train_Y=objective_at_X)
+            model_second_layer= SingleTaskGP(train_X=second_layer_input_norm, train_Y=objective_at_X,outcome_transform=Standardize(m=1))
             mll_second_layer = ExactMarginalLogLikelihood(model_second_layer.likelihood, model_second_layer)
             fit_gpytorch_model(mll_second_layer)
             for inner_iter in range(n_first_batch):
@@ -136,7 +137,7 @@ def bofn_pt_trial(
             model_second_layer=model_second_layer, best_obs_val = best_obs_val, n_second_batch = n_second_batch)
         t1 = time.time()
         runtimes.append(t1-t0)
-        
+
         # Evaluate at new (second) batch
         network_output_at_new_batch = function_network(second_batch)
         objective_at_new_batch = network_to_objective_transform(network_output_at_new_batch)
