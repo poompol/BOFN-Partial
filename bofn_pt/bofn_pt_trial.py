@@ -226,7 +226,8 @@ def get_first_batch(
                                                 random_seeds_first_layer=random_seeds_first_layer,
                                                 second_layer_GP=second_layer_GP,
                                                 random_seed_second_layer=random_seed_second_layer,
-                                                n_first_layer_nodes=n_first_layer_nodes)
+                                                n_first_layer_nodes=n_first_layer_nodes,normal_lower=normal_lower,
+                                                normal_upper=normal_upper)
         def fitness_func(X,solution_idx):
             fitness_val = acquisition_function.forward(X=X).item()
             return fitness_val
