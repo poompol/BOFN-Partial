@@ -20,6 +20,7 @@ from bofn_pt.utils.posterior_mean import PosteriorMean
 from bofn_pt.acquisition_function_optimization.optimize_acqf import optimize_acqf_and_get_suggested_point
 from bofn_pt.acquisition_function_optimization.thompson_acqf import ThompsonSampling
 from botorch.models.transforms import Standardize
+from botorch.optim.initializers import initialize_q_batch_nonneg
 
 import os
 import time
@@ -207,8 +208,39 @@ def get_first_batch(
             posterior_mean = posterior_mean_function
         )
     elif first_batch_algo in ["TS-NoCL", "TS-CLMAX", "TS-CLMIN", "TS-CLMEAN"]:
-        acquisition_function =
-
+        random_seeds_first_layer=torch.randint(low=1,high=10000,size=n_first_layer_nodes)
+        random_seed_second_layer=torch.randint(low=1,high=10000,size=1)
+        first_layer_GPs = [None for i in range(n_first_layer_nodes)]
+        for i in range(n_first_layer_nodes):
+            first_layer_GPs[i] = SingleTaskGP(train_X=first_layer_input,train_Y=first_layer_output,outcome_transform=Standardize(m=1))
+        second_layer_input_norm = second_layer_input.clone()
+        normal_lower = [None for i in range(n_first_layer_nodes)]
+        normal_upper = [None for i in range(n_first_layer_nodes)]
+        for i in range(n_first_layer_nodes):
+            normal_lower[i] = torch.min(network_output_at_X[..., i])
+            normal_upper[i] = torch.max(network_output_at_X[..., i])
+            second_layer_input_norm[..., i] = (second_layer_input_norm[..., i] - normal_lower[i]) / (
+                        normal_upper[i] - normal_lower[i])
+        second_layer_GP  = SingleTaskGP(train_X=second_layer_input_norm, train_Y=second_layer_output,
+                                          outcome_transform=Standardize(m=1))
+        acquisition_function = ThompsonSampling(first_layer_GPs=first_layer_GPs,
+                                                random_seeds_first_layer=random_seeds_first_layer,
+                                                second_layer_GP=second_layer_GP,
+                                                random_seed_second_layer=random_seed_second_layer,
+                                                n_first_layer_nodes=n_first_layer_nodes)
+        def fitness_func(X,solution_idx):
+            fitness_val = acquisition_function.forward(X=X).item()
+            return fitness_val
+        gene_space = [{'low': 0, 'high': 1} for i in range(input_dim)]
+        ga_instance = pygad.GA(num_generations=50,
+                               sol_per_pop=10,
+                               num_genes=input_dim,
+                               num_parents_mating=2,
+                               fitness_func=fitness_func,
+                               gene_space=gene_space)
+        ga_instance.run()
+        new_first_batch = ga_instance.best_solution()[0]
+        new_first_batch = torch.from_numpy(new_first_batch).reshape(1,input_dim)
     return new_first_batch
 
 def get_second_batch(first_batch: Tensor,temp_second_layer_input: Tensor,model_second_layer,

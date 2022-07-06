@@ -1,7 +1,8 @@
+from botorch.acquisition import AnalyticAcquisitionFunction
 from botorch.utils.gp_sampling import GPDraw
 import torch
 
-class ThompsonSampling:
+class ThompsonSampling(AnalyticAcquisitionFunction):
     r"""MC-based Thompson Sampling Acquisition Function for Function Network
     """
 
@@ -12,7 +13,6 @@ class ThompsonSampling:
         second_layer_GP,
         random_seed_second_layer,
         n_first_layer_nodes,
-        second_layer_function,
     ) -> None:
         r"""Thompson Sampling Acquisition Function.
 
