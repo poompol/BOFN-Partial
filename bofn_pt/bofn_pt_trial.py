@@ -240,6 +240,8 @@ def get_first_batch(
         ga_instance.run()
         new_first_batch = ga_instance.best_solution()[0]
         new_first_batch = torch.from_numpy(new_first_batch).reshape(1,input_dim)
+    else:
+        print("Invalid algorithm!")
     return new_first_batch
 
 def get_second_batch(first_batch: Tensor,temp_second_layer_input: Tensor,model_second_layer,
