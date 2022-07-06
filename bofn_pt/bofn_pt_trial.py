@@ -82,16 +82,20 @@ def bofn_pt_trial(
         t0 = time.time()
         objective_at_X=objective_at_X.reshape((len(objective_at_X),1))
 
-        if first_batch_algo== None and second_batch_algo == "RAND":
-            second_batch = torch.rand([n_second_batch, input_dim])
-        elif first_batch_algo== None and second_batch_algo == "TS-Whole":
-            second_batch = generate_batch_thompson(first_layer_input=first_layer_input,
-            first_layer_output=first_layer_output,second_layer_input=first_layer_output,
-            second_layer_output=objective_at_X,batch_size=n_second_batch,n_candidates=500,
-            network_to_objective_transform=network_to_objective_transform)
-            y_at_new_point = function_network(second_batch)[:, :-1].clone()
-            first_layer_input = torch.cat((first_layer_input,second_batch),0)
-            first_layer_output = torch.cat((first_layer_output,y_at_new_point),0)
+        if first_batch_algo== None:
+            if second_batch_algo == "RAND":
+                second_batch = torch.rand([n_second_batch, input_dim])
+            elif second_batch_algo == "TS-Whole":
+                second_batch = generate_batch_thompson(first_layer_input=first_layer_input,
+                first_layer_output=first_layer_output,second_layer_input=first_layer_output,
+                second_layer_output=objective_at_X,batch_size=n_second_batch,n_candidates=500,
+                network_to_objective_transform=network_to_objective_transform)
+                y_at_new_point = function_network(second_batch)[:, :-1].clone()
+                first_layer_input = torch.cat((first_layer_input,second_batch),0)
+                first_layer_output = torch.cat((first_layer_output,y_at_new_point),0)
+            else:
+                print("Invalid algorithm")
+                break
         else:
             second_layer_input= network_output_at_X[:,:-1].clone()
             second_layer_output = objective_at_X.clone()
