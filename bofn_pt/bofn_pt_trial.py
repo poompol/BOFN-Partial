@@ -92,7 +92,7 @@ def bofn_pt_trial(
             y_at_new_point = function_network(second_batch)[:, :-1].clone()
             first_layer_input = torch.cat((first_layer_input,second_batch),0)
             first_layer_output = torch.cat((first_layer_output,y_at_new_point),0)
-        elif first_batch_algo in ["EIFN-NoCL","EIFN-CLMAX","EIFN-CLMIN","EIFN-CLMEAN"]:
+        else:
             second_layer_input= network_output_at_X[:,:-1].clone()
             second_layer_output = objective_at_X.clone()
             second_layer_input_norm = second_layer_input.clone()
@@ -126,26 +126,21 @@ def bofn_pt_trial(
                 else:
                     first_batch = torch.cat((first_batch,new_point),0)
                     temp_second_layer_input = torch.cat((temp_second_layer_input,y_at_new_point_norm),0)
-                if first_batch_algo == "EIFN-CLMAX":
+                if first_batch_algo in ["EIFN-CLMAX","TS-CLMAX"]:
                     CL = objective_at_X.max()
                     second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
                     second_layer_output = torch.cat((second_layer_output,CL.reshape(1,1)),0)
-                elif first_batch_algo == "EIFN-CLMIN":
+                elif first_batch_algo in ["EIFN-CLMIN","TS-CLMIN"]:
                     CL = objective_at_X.min()
                     second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
                     second_layer_output = torch.cat((second_layer_output,CL.reshape(1,1)),0)
-                elif first_batch_algo == "EIFN-CLMEAN":
+                elif first_batch_algo in ["EIFN-CLMEAN","TS-CLMEAN"]:
                     CL = model_second_layer.posterior(y_at_new_point_norm).mean.item()
                     second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
                     second_layer_output = torch.cat((second_layer_output,torch.tensor(CL).reshape(1,1)),0)
             second_batch = get_second_batch(first_batch = first_batch, temp_second_layer_input=temp_second_layer_input,
             model_second_layer=model_second_layer, best_obs_val = best_obs_val,
             n_second_batch = n_second_batch,second_batch_algo=second_batch_algo)
-        elif first_batch_algo in ["TS-NoCL", "TS-CLMAX", "TS-CLMIN", "TS-CLMEAN"]:
-            print("To be filled")
-        else:
-            print(f"Invalid algorithms")
-
         t1 = time.time()
         runtimes.append(t1-t0)
 
