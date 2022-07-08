@@ -44,17 +44,7 @@ def optimize_acqf_and_get_suggested_point(
         baseline_candidate = baseline_candidate.detach().view(torch.Size([1, batch_size, input_dim]))
         batch_initial_conditions = torch.cat([batch_initial_conditions, baseline_candidate], 0)
         num_restarts += 1
-    '''
-    candidate, acq_value = optimize_acqf(
-        acq_function=acq_func,
-        bounds=bounds,
-        q=batch_size,
-        num_restarts=num_restarts,
-        batch_initial_conditions=batch_initial_conditions,
-        options={"batch_limit": batch_limit},
-        # options={'disp': True, 'iprint': 101},
-    )
-    '''
+
     candidate, acq_value = optimize_acqf(
         acq_function=acq_func,
         bounds=bounds,
