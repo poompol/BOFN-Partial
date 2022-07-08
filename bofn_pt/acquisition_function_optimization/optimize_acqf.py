@@ -68,4 +68,3 @@ def optimize_acqf_and_get_suggested_point(
 
     new_x = candidate.detach().view([batch_size, input_dim])
     return new_x
-c
