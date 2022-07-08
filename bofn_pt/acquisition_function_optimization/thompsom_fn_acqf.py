@@ -1,14 +1,10 @@
 import torch
 from torch import Tensor
 from botorch.acquisition import AcquisitionFunction
-from botorch.fit import fit_gpytorch_model
-from botorch.models import SingleTaskGP
-from botorch.test_functions import Hartmann
-from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.utils.gp_sampling import get_gp_samples
 from typing import Callable, List, Optional
 from botorch.models.model import Model
-class ThompsonSampling(AcquisitionFunction):
+class ThompsonSamplingFN(AcquisitionFunction):
     def __init__(
         self,
         first_layer_GPs: List[Model],
@@ -20,7 +16,7 @@ class ThompsonSampling(AcquisitionFunction):
         r"""Thompson Sampling Acquisition Function.
 
         Args:
-            first_layer_GPs: Fitted GP models for functions in the first layer node
+            first_layer_GPs: A List of Fitted GP models for functions in the first layer node
             second_layer_GPs: A Fitted GP model for the function in the second layer node
         """
         super(AcquisitionFunction, self).__init__()
