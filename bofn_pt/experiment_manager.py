@@ -8,6 +8,7 @@ def experiment_manager(
         problem: str,
         first_batch_algo: str,
         second_batch_algo: str,
+        Constant_Liar: str,
         first_trial: int,
         last_trial: int,
         n_init_evals: int,
@@ -23,7 +24,7 @@ def experiment_manager(
         script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
 
         if first_batch_algo is not None:
-                results_folder = script_dir + "/results/" + problem + "/" + first_batch_algo + "_" + second_batch_algo + "/"
+                results_folder = script_dir + "/results/" + problem + "/" + first_batch_algo +"-"+ Constant_Liar + "_" + second_batch_algo + "/"
         else:
                 results_folder = script_dir + "/results/" + problem + "/" + second_batch_algo + "/"
 
@@ -46,6 +47,7 @@ def experiment_manager(
                         input_dim = input_dim,
                         first_batch_algo = first_batch_algo,
                         second_batch_algo = second_batch_algo,
+                        Constant_Liar = Constant_Liar,
                         n_init_evals = n_init_evals,
                         n_bo_iter = n_bo_iter,
                         trial = trial,
