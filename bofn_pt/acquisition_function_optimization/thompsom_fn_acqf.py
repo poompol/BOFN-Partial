@@ -35,6 +35,7 @@ class ThompsonSampling:
         for i in range(self.n_first_layer_nodes):
             ts_vals_first_layer= torch.cat((ts_vals_first_layer,self.thompson_first_layer[i].forward(X=X)),dim=1)
         ts_vals_first_layer_norm = ts_vals_first_layer.clone()
+        print(ts_vals_first_layer_norm)
         for i in range(self.n_first_layer_nodes):
             ts_vals_first_layer_norm =(ts_vals_first_layer_norm[..., i] - self.normal_lower[i]) / (
                         self.normal_upper[i] - self.normal_lower[i])
