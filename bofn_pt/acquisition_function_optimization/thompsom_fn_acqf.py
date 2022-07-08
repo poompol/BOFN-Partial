@@ -9,9 +9,7 @@ class ThompsonSampling:
     def __init__(
         self,
         first_layer_GPs,
-        random_seeds_first_layer,
         second_layer_GP,
-        random_seed_second_layer,
         n_first_layer_nodes,
         normal_lower,
         normal_upper
