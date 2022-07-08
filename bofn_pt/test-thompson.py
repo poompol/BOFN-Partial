@@ -35,6 +35,8 @@ for i in range(n_first_layer_nodes):
     normal_upper[i] = torch.max(train_second_input[..., i])
     train_second_input_norm [..., i] = (train_second_input_norm [..., i] - normal_lower[i]) / (
             normal_upper[i] - normal_lower[i])
-second_layer_GP = SingleTaskGP(train_X=train_second_input_norm, train_Y=second_layer_output,
+model_second_layer = SingleTaskGP(train_X=train_second_input_norm, train_Y=second_layer_output,
                                outcome_transform=Standardize(m=1))
-acquisition_function = ThompsonSampling(first_layer_GPs=model_first_layer,)
+acquisition_function = ThompsonSampling(first_layer_GPs=model_first_layer,second_layer_GP=model_second_layer,
+                                        n_first_layer_nodes=n_first_layer_nodes,
+                                        normal_lower=normal_lower,normal_upper=normal_upper)

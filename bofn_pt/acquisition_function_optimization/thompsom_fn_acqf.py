@@ -22,8 +22,6 @@ class ThompsonSampling:
         """
         self.first_layer_GPs = first_layer_GPs
         self.second_layer_GP = second_layer_GP
-        self.random_seeds_first_layer = random_seeds_first_layer
-        self.random_seed_second_layer = random_seed_second_layer
         self.n_first_layer_nodes = n_first_layer_nodes
         self.normal_lower = normal_lower
         self.normal_upper =normal_upper
