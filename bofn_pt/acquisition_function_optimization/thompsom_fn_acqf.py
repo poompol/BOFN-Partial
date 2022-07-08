@@ -1,15 +1,18 @@
 import torch
 from torch import Tensor
+from botorch.acquisition import AcquisitionFunction
 from botorch.fit import fit_gpytorch_model
 from botorch.models import SingleTaskGP
 from botorch.test_functions import Hartmann
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.utils.gp_sampling import get_gp_samples
-class ThompsonSampling:
+from typing import Callable, List, Optional
+from botorch.models.model import Model
+class ThompsonSampling(AcquisitionFunction):
     def __init__(
         self,
-        first_layer_GPs,
-        second_layer_GP,
+        first_layer_GPs: List[Model],
+        second_layer_GP: Model,
         n_first_layer_nodes,
         normal_lower,
         normal_upper
@@ -20,6 +23,7 @@ class ThompsonSampling:
             first_layer_GPs: Fitted GP models for functions in the first layer node
             second_layer_GPs: A Fitted GP model for the function in the second layer node
         """
+        super(AcquisitionFunction, self).__init__()
         self.first_layer_GPs = first_layer_GPs
         self.second_layer_GP = second_layer_GP
         self.n_first_layer_nodes = n_first_layer_nodes
@@ -33,11 +37,10 @@ class ThompsonSampling:
     def forward(self, X: Tensor) -> Tensor:
         ts_vals_first_layer = torch.tensor([])
         for i in range(self.n_first_layer_nodes):
-            ts_vals_first_layer= torch.cat((ts_vals_first_layer,self.thompson_first_layer[i].forward(X=X)),dim=1)
+            ts_vals_first_layer= torch.cat((ts_vals_first_layer,self.thompson_first_layer[i].forward(X=X)),dim=-1)
         ts_vals_first_layer_norm = ts_vals_first_layer.clone()
-        print(ts_vals_first_layer_norm)
         for i in range(self.n_first_layer_nodes):
-            ts_vals_first_layer_norm =(ts_vals_first_layer_norm[..., i] - self.normal_lower[i]) / (
+            ts_vals_first_layer_norm[...,i] =(ts_vals_first_layer_norm[..., i] - self.normal_lower[i]) / (
                         self.normal_upper[i] - self.normal_lower[i])
-        ts_val = self.thompson_second_layer.forward(X=ts_vals_first_layer_norm)
+        ts_val = self.thompson_second_layer.forward(X=ts_vals_first_layer_norm).squeeze(1)
         return ts_val

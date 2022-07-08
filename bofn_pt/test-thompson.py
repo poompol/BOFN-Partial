@@ -11,8 +11,9 @@ from botorch.test_functions import Hartmann
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.models.transforms import Standardize
 from bofn_pt.acquisition_function_optimization.thompsom_fn_acqf import ThompsonSampling
+from bofn_pt.acquisition_function_optimization.optimize_acqf import optimize_acqf_and_get_suggested_point
 neg_hartmann6 = Hartmann(dim=6, negate=True)
-
+input_dim = 6
 train_x = torch.rand(10, 6)
 train_first_output = neg_hartmann6(train_x).unsqueeze(-1)
 train_second_input = torch.tensor([])
@@ -40,3 +41,13 @@ model_second_layer = SingleTaskGP(train_X=train_second_input_norm, train_Y=secon
 acquisition_function = ThompsonSampling(first_layer_GPs=model_first_layer,second_layer_GP=model_second_layer,
                                         n_first_layer_nodes=n_first_layer_nodes,
                                         normal_lower=normal_lower,normal_upper=normal_upper)
+test_x= torch.rand(2,6)
+aa=acquisition_function.forward(X=test_x)
+new_first_batch = optimize_acqf_and_get_suggested_point(
+    acq_func=acquisition_function,
+    bounds=torch.tensor([[0. for i in range(input_dim)],
+                         [1. for i in range(input_dim)]]),
+    batch_size=1,
+    batch_limit=1,
+    init_batch_limit=1
+)
