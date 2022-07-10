@@ -4,8 +4,8 @@ import sys
 import time
 import torch
 import pygad
-from botorch.acquisition import ExpectedImprovement, qExpectedImprovement #(only qEI will be called)
-#from botorch.acquisition import PosteriorMean as GPPosteriorMean (can be deleted, not be called)
+from botorch.acquisition import ExpectedImprovement, qExpectedImprovement
+from botorch.acquisition import PosteriorMean as GPPosteriorMean
 from botorch.sampling.samplers import SobolQMCNormalSampler
 from torch import Tensor
 from typing import Callable, List, Optional
@@ -63,8 +63,8 @@ def bofn_pt_trial(
     network_output_at_X = function_network(X)
     objective_at_X = network_to_objective_transform(network_output_at_X)
 
-    first_layer_input = X
-    first_layer_output = network_output_at_X[:,:-1]
+    first_layer_input = X.clone()
+    first_layer_output = network_output_at_X[:,:-1].clone()
     n_first_layer_nodes = first_layer_output.shape[1]
 
     # Current Best Objective value
@@ -92,6 +92,8 @@ def bofn_pt_trial(
             if second_batch_algo == "RAND":
                 second_batch = torch.rand([n_second_batch, input_dim])
             elif second_batch_algo == "TSWH":
+                first_layer_input = X.clone()
+                first_layer_output = network_output_at_X[:,:-1].clone()
                 second_layer_input = network_output_at_X[:,:-1].clone()
                 second_layer_output = objective_at_X.clone()
                 second_batch = get_second_batch_TS_whole(first_layer_input=first_layer_input,
