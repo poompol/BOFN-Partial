@@ -38,5 +38,5 @@ class ThompsonSamplingFN(AcquisitionFunction):
         for i in range(self.n_first_layer_nodes):
             ts_vals_first_layer_norm[...,i] =(ts_vals_first_layer_norm[..., i] - self.normal_lower[i]) / (
                         self.normal_upper[i] - self.normal_lower[i])
-        ts_val = self.thompson_second_layer.forward(X=ts_vals_first_layer_norm).squeeze(1)
+        ts_val = self.thompson_second_layer.forward(X=ts_vals_first_layer_norm).squeeze(-1).squeeze(0)
         return ts_val
