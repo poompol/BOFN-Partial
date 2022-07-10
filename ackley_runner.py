@@ -39,7 +39,7 @@ Constant_Liar = "CLMAX"
 second_batch_algo = 'qEI'
 
 # number of candidates in first and second batches, respectively. Second batch candidates are selected from the first one
-n_first_batch = 3
+n_first_batch = 10
 n_second_batch = 2
 
 
