@@ -309,7 +309,6 @@ def get_second_batch_TS_whole(
                                                 second_layer_GP=second_layer_GP,
                                                 n_first_layer_nodes=n_first_layer_nodes,
                                                 normal_lower=normal_lower,normal_upper=normal_upper)
-        test_x = torch.rand(1,input_dim)
         new_point = optimize_acqf_and_get_suggested_point(
             acq_func = acquisition_function,
             bounds=torch.tensor([[0. for i in range(input_dim)],
