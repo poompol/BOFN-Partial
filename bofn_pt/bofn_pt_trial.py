@@ -149,8 +149,6 @@ def bofn_pt_trial(
                         CL = model_second_layer.posterior(y_at_new_point_norm).mean.item()
                         second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
                         second_layer_output = torch.cat((second_layer_output,torch.tensor(CL).reshape(1,1)),0)
-            print(temp_second_layer_input)
-            print(temp_second_layer_input.shape)
             second_batch = get_second_batch(first_batch = first_batch, temp_second_layer_input=temp_second_layer_input,
             model_second_layer=model_second_layer, best_obs_val = best_obs_val,
             n_second_batch = n_second_batch,second_batch_algo=second_batch_algo)
@@ -321,6 +319,4 @@ def get_second_batch_TS_whole(
             new_second_batch = new_point
         else:
             new_second_batch = torch.cat((new_second_batch,new_point),dim=0)
-        print("this is second batch")
-        print(new_second_batch)
     return new_second_batch
