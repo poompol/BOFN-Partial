@@ -32,7 +32,7 @@ network_to_objective_transform = GenericMCObjective(network_to_objective_transfo
 Specify algorithm:
 Possible choices for "first_batch_algo": EIFN / TSFN / None
 Possible choices for "Constant_Liar": NoCL / CLMAX / CLMIN / CLMEAN / None
-Possible choices for "second_batch_algo": qEI / TS / RAND / TSWH(Required for every algorithm)
+Possible choices for "second_batch_algo" (This argument is required for every algorithm) : qEI / TS / RAND / TSWH
 '''
 first_batch_algo = "TSFN"
 Constant_Liar = "CLMAX"
