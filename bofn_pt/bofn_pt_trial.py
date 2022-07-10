@@ -4,8 +4,8 @@ import sys
 import time
 import torch
 import pygad
-from botorch.acquisition import ExpectedImprovement, qExpectedImprovement
-from botorch.acquisition import PosteriorMean as GPPosteriorMean
+from botorch.acquisition import ExpectedImprovement, qExpectedImprovement #(only qEI will be called)
+#from botorch.acquisition import PosteriorMean as GPPosteriorMean (can be deleted, not be called)
 from botorch.sampling.samplers import SobolQMCNormalSampler
 from torch import Tensor
 from typing import Callable, List, Optional
