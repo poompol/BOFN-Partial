@@ -20,5 +20,5 @@ class ThompsonSampling2ND(AcquisitionFunction):
         self.thompson_second_layer = get_gp_samples(model=self.second_layer_GP, num_outputs=1, n_samples=1)
 
     def forward(self, X: Tensor) -> Tensor:
-        ts_val = self.thompson_second_layer.forward(X=X).squeeze(1)
+        ts_val = self.thompson_second_layer.forward(X=X).squeeze(-1).squeeze(0)
         return ts_val
