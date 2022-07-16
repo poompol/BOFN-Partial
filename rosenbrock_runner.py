@@ -32,17 +32,18 @@ network_to_objective_transform = GenericMCObjective(network_to_objective_transfo
 Specify algorithm:
 Possible choices for "first_batch_algo": EIFN / TSFN / None
 Possible choices for "Constant_Liar": NoCL / CLMAX / CLMIN / CLMEAN / None
-Possible choices for "second_batch_algo": qEI / TS / RAND / TS-Whole (Required for every algorithm)
+Possible choices for "second_batch_algo": qEI / TS / RAND / TSWH (Required for every algorithm)
 '''
-first_batch_algo = 'TSFN'
-Constant_Liar = "NoCL"
-second_batch_algo = 'qEI'
+first_batch_algo = "EIFN"
+Constant_Liar = "CLMAX"
+second_batch_algo = "TS"
 
 # number of candidates in first and second batches, respectively. Second batch candidates are selected from the first one
 n_first_batch = 10
 n_second_batch = 2
 
-
+# Consider all points selected in first batch from previous iterations
+keep_first_batch = True
 n_bo_iter = 20 # no of maximum no of iterations for BO main loops
 
 # no of replications (inputs from system)
@@ -67,5 +68,6 @@ experiment_manager(
     input_dim = input_dim,
     network_to_objective_transform = network_to_objective_transform,
     n_first_batch = n_first_batch,
-    n_second_batch = n_second_batch
+    n_second_batch = n_second_batch,
+    keep_first_batch = keep_first_batch
 )
