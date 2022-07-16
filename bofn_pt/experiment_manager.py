@@ -17,7 +17,8 @@ def experiment_manager(
         input_dim: int,
         network_to_objective_transform: Callable,
         n_first_batch: int or None,
-        n_second_batch: int
+        n_second_batch: int,
+        keep_first_batch: Optional[bool],
 ) -> None:
         # Get Directory and creat directory for results
 
@@ -52,6 +53,7 @@ def experiment_manager(
                         n_bo_iter = n_bo_iter,
                         trial = trial,
                         n_first_batch = n_first_batch,
-                        n_second_batch = n_second_batch
+                        n_second_batch = n_second_batch,
+                        keep_first_batch = keep_first_batch,
                 )
 
