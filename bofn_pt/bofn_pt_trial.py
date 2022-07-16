@@ -46,7 +46,8 @@ def bofn_pt_trial(
         input_dim: int,
         network_to_objective_transform: Callable,
         n_first_batch: int,
-        n_second_batch: int
+        n_second_batch: int,
+        keep_first_batch: Optional[bool] = False,
 ) -> None:
     # Get script directory
     script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
@@ -75,12 +76,17 @@ def bofn_pt_trial(
     runtimes = []
 
     init_batch_id = 1
+    if keep_first_batch:
+        first_batch_all = torch.tensor([])
+        y_at_first_batch_all = torch.tensor([])
     for iteration in range(init_batch_id, n_bo_iter+1):
         print("Experiment: " + problem)
         if first_batch_algo is not None:
             print("First Batch algo: " + first_batch_algo)
         if Constant_Liar is not None:
             print("Constant Liar: " + Constant_Liar)
+        if keep_first_batch:
+            print("Implementing all previously chosen points in first batch process")
         print("Second Batch algo: "+ second_batch_algo)
         print("Trial: " + str(trial))
         print("Iteration: " + str(iteration))
@@ -132,10 +138,14 @@ def bofn_pt_trial(
                     y_at_new_point_norm[...,i]=(y_at_new_point_norm[...,i]-normal_lower[i])/(normal_upper[i]-normal_lower[i])
                 if inner_iter == 0:
                     first_batch = new_point
-                    temp_second_layer_input = y_at_new_point_norm
+                    y_at_first_batch = y_at_new_point
+                    if not keep_first_batch:
+                        temp_second_layer_input = y_at_new_point_norm
                 else:
                     first_batch = torch.cat((first_batch,new_point),0)
-                    temp_second_layer_input = torch.cat((temp_second_layer_input,y_at_new_point_norm),0)
+                    y_at_first_batch = torch.cat((y_at_first_batch,y_at_new_point),0)
+                    if not keep_first_batch:
+                        temp_second_layer_input = torch.cat((temp_second_layer_input,y_at_new_point_norm),0)
                 if Constant_Liar != "NoCL":
                     if Constant_Liar == "CLMAX":
                         CL = objective_at_X.max()
@@ -149,9 +159,30 @@ def bofn_pt_trial(
                         CL = model_second_layer.posterior(y_at_new_point_norm).mean.item()
                         second_layer_input = torch.cat((second_layer_input,y_at_new_point),0)
                         second_layer_output = torch.cat((second_layer_output,torch.tensor(CL).reshape(1,1)),0)
-            second_batch = get_second_batch(first_batch = first_batch, temp_second_layer_input=temp_second_layer_input,
-            model_second_layer=model_second_layer, best_obs_val = best_obs_val,
-            n_second_batch = n_second_batch,second_batch_algo=second_batch_algo)
+            if keep_first_batch:
+                first_batch_all = torch.cat((first_batch_all,first_batch),dim=0)
+                y_at_first_batch_all = torch.cat((y_at_first_batch_all,y_at_first_batch),dim=0)
+                temp_second_layer_input_all = y_at_first_batch_all.clone()
+                for i in range(n_first_layer_nodes):
+                    temp_second_layer_input_all[...,i]=(temp_second_layer_input_all[...,i]-normal_lower[i])/(normal_upper[i]-normal_lower[i])
+                second_batch = get_second_batch(first_batch = first_batch_all, temp_second_layer_input=temp_second_layer_input_all,
+                model_second_layer=model_second_layer, best_obs_val = best_obs_val,
+                n_second_batch = n_second_batch,second_batch_algo=second_batch_algo)
+                #print(f"Second batch {second_batch}")
+                #print(f"FB all before delete {first_batch_all}")
+                #print(f"y at fb all before delete {y_at_first_batch_all}")
+                for i in range(n_second_batch):
+                    delete_index = torch.nonzero((first_batch_all==second_batch[i,...]).sum(dim=1)==second_batch[i,...].size(0))
+                    first_batch_all = torch.cat((first_batch_all[:delete_index[0],...],first_batch_all[delete_index[0]+1:,...]),dim=0)
+                    y_at_first_batch_all = torch.cat((y_at_first_batch_all[:delete_index[0],...],y_at_first_batch_all[delete_index[0]+1:,...]),dim=0)
+                #print(f"first batch all after delete {first_batch_all}")
+                #print(f"FB all shape for next iter {first_batch_all.shape}")
+                #print(f"y at fb all after delete {y_at_first_batch_all}")
+                #print(f"y at fb all shape for next iter {y_at_first_batch_all.shape}")
+            else:
+                second_batch = get_second_batch(first_batch = first_batch, temp_second_layer_input=temp_second_layer_input,
+                model_second_layer=model_second_layer, best_obs_val = best_obs_val,
+                n_second_batch = n_second_batch,second_batch_algo=second_batch_algo)
         t1 = time.time()
         runtimes.append(t1-t0)
 
@@ -248,6 +279,7 @@ def get_second_batch(first_batch: Tensor,temp_second_layer_input: Tensor,model_s
         qEI = qExpectedImprovement(model_second_layer, best_obs_val, sampler)
         n_first_batch = first_batch.shape[0]
         gene_space = [list(range(n_first_batch)) for i in range(n_second_batch)]
+        print(f"n_first_batch_consider!!! {n_first_batch}")
         def fitness_func(X,solution_idx):
             selected_tensor = temp_second_layer_input[X,:]
             fitness_val = qEI(selected_tensor).item()
