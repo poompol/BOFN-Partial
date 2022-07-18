@@ -46,8 +46,8 @@ def optimize_acqf_and_get_suggested_point(
         num_restarts += 1
     
     # set new batch limit
-    #if batch_limit == num_restarts:
-    #    batch_limit = 2
+    if batch_limit != 1:
+        batch_limit = 2
 
     candidate, acq_value = optimize_acqf(
         acq_function=acq_func,
