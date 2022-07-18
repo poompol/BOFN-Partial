@@ -13,6 +13,7 @@ from typing import Callable, List, Optional
 from bofn_pt.utils.generate_initial_design import generate_initial_design
 from botorch import fit_gpytorch_model
 from botorch.models import SingleTaskGP
+from botorch.models import FixedNoiseGP
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from bofn_pt.models.gp_network_partial import GaussianProcessNetworkPartial
@@ -22,6 +23,8 @@ from bofn_pt.acquisition_function_optimization.thompson_fn_acqf import ThompsonS
 from bofn_pt.acquisition_function_optimization.thompson_2nd_acqf import ThompsonSampling2ND
 from botorch.models.transforms import Standardize
 from botorch.optim.initializers import initialize_q_batch_nonneg
+from botorch.optim import optimize_acqf
+
 
 import os
 import time
@@ -76,6 +79,9 @@ def bofn_pt_trial(
     runtimes = []
 
     init_batch_id = 1
+    if second_batch_algo in ["pEIFN","aEIWH"]:
+        n_bo_iter = n_second_batch*n_bo_iter
+        print(f"To make comparison, maximum number of BO iter has increased to {n_bo_iter}!")
     if keep_first_batch:
         first_batch_all = torch.tensor([])
         y_at_first_batch_all = torch.tensor([])
@@ -105,6 +111,32 @@ def bofn_pt_trial(
                 second_batch = get_second_batch_TS_whole(first_layer_input=first_layer_input,
                 first_layer_output=first_layer_output,second_layer_input=second_layer_input,
                 second_layer_output=second_layer_output,n_first_layer_nodes=n_first_layer_nodes,n_second_batch=n_second_batch)
+            elif second_batch_algo == "pEIFN":
+                first_layer_input = X.clone()
+                first_layer_output = network_output_at_X[:,:-1].clone()
+                second_layer_input = network_output_at_X[:,:-1].clone()
+                second_layer_output = objective_at_X.clone()
+                second_batch = get_second_batch_pure_EIFN(first_layer_input=first_layer_input,
+                first_layer_output=first_layer_output,second_layer_input=second_layer_input,
+                second_layer_output=second_layer_output,n_first_layer_nodes=n_first_layer_nodes,n_second_batch=n_second_batch,
+                network_to_objective_transform=network_to_objective_transform)
+            elif second_batch_algo == "qEIWH":
+                first_layer_input = X.clone()
+                first_layer_output = network_output_at_X[:,:-1].clone()
+                second_layer_input = network_output_at_X[:,:-1].clone()
+                second_layer_output = objective_at_X.clone()
+                second_batch = get_second_batch_qEIWH(first_layer_input=first_layer_input,
+                second_layer_output=second_layer_output,n_second_batch=n_second_batch,
+                network_to_objective_transform=network_to_objective_transform)
+
+            elif second_batch_algo == "aEIWH":
+                first_layer_input = X.clone()
+                first_layer_output = network_output_at_X[:,:-1].clone()
+                second_layer_input = network_output_at_X[:,:-1].clone()
+                second_layer_output = objective_at_X.clone()
+                second_batch = get_second_batch_aEIWH(first_layer_input=first_layer_input,
+                second_layer_output=second_layer_output,n_second_batch=n_second_batch,
+                network_to_objective_transform=network_to_objective_transform)
             else:
                 print("Invalid algorithm")
                 break
@@ -187,6 +219,7 @@ def bofn_pt_trial(
         runtimes.append(t1-t0)
 
         # Evaluate at new (second) batch
+        print(second_batch)
         network_output_at_new_batch = function_network(second_batch)
         objective_at_new_batch = network_to_objective_transform(network_output_at_new_batch)
         objective_at_new_batch = objective_at_new_batch.reshape((objective_at_new_batch.shape[0],1))
@@ -244,8 +277,11 @@ def get_first_batch(
         )
     elif first_batch_algo == "TSFN":
         first_layer_GPs = [None for i in range(n_first_layer_nodes)]
+        first_layer_mlls = [None for k in range(n_first_layer_nodes)]
         for i in range(n_first_layer_nodes):
             first_layer_GPs[i] = SingleTaskGP(train_X=first_layer_input,train_Y=first_layer_output[...,[i]],outcome_transform=Standardize(m=1))
+            first_layer_mlls[i] = ExactMarginalLogLikelihood(first_layer_GPs[i].likelihood,first_layer_GPs[i])
+            fit_gpytorch_model(first_layer_mlls[i])
         second_layer_input_norm = second_layer_input.clone()
         normal_lower = [None for i in range(n_first_layer_nodes)]
         normal_upper = [None for i in range(n_first_layer_nodes)]
@@ -256,6 +292,8 @@ def get_first_batch(
                         normal_upper[i] - normal_lower[i])
         second_layer_GP  = SingleTaskGP(train_X=second_layer_input_norm, train_Y=second_layer_output,
                                           outcome_transform=Standardize(m=1))
+        second_layer_mll = ExactMarginalLogLikelihood(second_layer_GP.likelihood,second_layer_GP)
+        fit_gpytorch_model(second_layer_mll)
         acquisition_function = ThompsonSamplingFN(first_layer_GPs=first_layer_GPs,
                                                 second_layer_GP=second_layer_GP,
                                                 n_first_layer_nodes=n_first_layer_nodes,
@@ -322,8 +360,11 @@ def get_second_batch_TS_whole(
 ):
     input_dim = first_layer_input.shape[-1]
     first_layer_GPs = [None for i in range(n_first_layer_nodes)]
+    first_layer_mlls = [None for k in range(n_first_layer_nodes)]
     for i in range(n_first_layer_nodes):
         first_layer_GPs[i] = SingleTaskGP(train_X=first_layer_input,train_Y=first_layer_output[...,[i]],outcome_transform=Standardize(m=1))
+        first_layer_mlls[i] = ExactMarginalLogLikelihood(first_layer_GPs[i].likelihood,first_layer_GPs[i])
+        fit_gpytorch_model(first_layer_mlls[i])
     second_layer_input_norm = second_layer_input.clone()
     normal_lower = [None for i in range(n_first_layer_nodes)]
     normal_upper = [None for i in range(n_first_layer_nodes)]
@@ -334,6 +375,8 @@ def get_second_batch_TS_whole(
                     normal_upper[i] - normal_lower[i])
     second_layer_GP  = SingleTaskGP(train_X=second_layer_input_norm, train_Y=second_layer_output,
                                         outcome_transform=Standardize(m=1))
+    second_layer_mll = ExactMarginalLogLikelihood(second_layer_GP.likelihood,second_layer_GP)
+    fit_gpytorch_model(second_layer_mll)
     for i in range(n_second_batch):
         acquisition_function = ThompsonSamplingFN(first_layer_GPs=first_layer_GPs,
                                                 second_layer_GP=second_layer_GP,
@@ -351,4 +394,92 @@ def get_second_batch_TS_whole(
             new_second_batch = new_point
         else:
             new_second_batch = torch.cat((new_second_batch,new_point),dim=0)
+    return new_second_batch
+
+def get_second_batch_pure_EIFN(
+    first_layer_input: Tensor,
+    first_layer_output: Tensor,
+    n_first_layer_nodes: int,
+    second_layer_input: Tensor,
+    second_layer_output: Tensor,
+    n_second_batch: int,
+    network_to_objective_transform: Callable
+):
+    input_dim = first_layer_input.shape[-1]
+    model = GaussianProcessNetworkPartial(train_X = first_layer_input,
+                                    train_Y_output_first_layer = first_layer_output,
+                                    train_Y_input_second_layer = second_layer_input,
+                                    train_Z = second_layer_output)
+    qmc_sample = SobolQMCNormalSampler(num_samples=128)
+    acquisition_function = qExpectedImprovement(
+        model = model,
+        best_f = second_layer_output.max().item(),
+        sampler = qmc_sample,
+        objective = network_to_objective_transform
+    )
+    posterior_mean_function = PosteriorMean(
+        model = model,
+        sampler = qmc_sample,
+        objective = network_to_objective_transform
+    )
+    new_second_batch = optimize_acqf_and_get_suggested_point(
+        acq_func = acquisition_function,
+        bounds=torch.tensor([[0. for i in range(input_dim)],
+                                [1. for i in range(input_dim)]]),
+        batch_size=1,
+        posterior_mean = posterior_mean_function,
+    )
+    return new_second_batch
+
+def get_second_batch_qEIWH(first_layer_input: Tensor,
+                second_layer_output: Tensor,
+                n_second_batch: int,
+                network_to_objective_transform: Callable
+):
+    input_dim = first_layer_input.shape[-1]
+    model = SingleTaskGP(train_X=first_layer_input,train_Y=second_layer_output,
+            outcome_transform=Standardize(m=1))
+    mll = ExactMarginalLogLikelihood(model.likelihood,model)
+    fit_gpytorch_model(mll)
+    qmc_sample = SobolQMCNormalSampler(num_samples=128)
+    acquisition_function = qExpectedImprovement(
+        model = model,
+        best_f = second_layer_output.max().item(),
+        sampler = qmc_sample,
+        objective = network_to_objective_transform
+    )
+    new_second_batch,_ = optimize_acqf(
+        acq_function = acquisition_function,
+        bounds=torch.tensor([[0. for i in range(input_dim)],
+                                [1. for i in range(input_dim)]]),
+        q=n_second_batch,
+        num_restarts = 10 * input_dim,
+        raw_samples = 100 * input_dim,
+        options={},
+    )
+    return new_second_batch
+
+def get_second_batch_aEIWH(first_layer_input: Tensor,
+                second_layer_output: Tensor,
+                n_second_batch: int,
+                network_to_objective_transform: Callable
+):
+    input_dim = first_layer_input.shape[-1]
+    model = SingleTaskGP(train_X=first_layer_input,train_Y=second_layer_output,
+            outcome_transform=Standardize(m=1))
+    mll = ExactMarginalLogLikelihood(model.likelihood,model)
+    fit_gpytorch_model(mll)
+    acquisition_function = ExpectedImprovement(
+        model = model,
+        best_f = second_layer_output.max().item(),
+    )
+    posterior_mean_function = GPPosteriorMean(model=model)
+    print(f"test {second_layer_output}")
+    new_second_batch = optimize_acqf_and_get_suggested_point(
+        acq_func = acquisition_function,
+        bounds=torch.tensor([[0. for i in range(input_dim)],
+                                [1. for i in range(input_dim)]]),
+        batch_size = 1,
+        posterior_mean=posterior_mean_function,
+    )
     return new_second_batch
