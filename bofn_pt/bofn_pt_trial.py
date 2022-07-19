@@ -79,7 +79,7 @@ def bofn_pt_trial(
     runtimes = []
 
     init_batch_id = 1
-    if second_batch_algo in ["pEIFN","aEIWH"]:
+    if second_batch_algo in ["EIFN","aEI"]:
         n_bo_iter = n_second_batch*n_bo_iter
         print(f"To make comparison, maximum number of BO iter has increased to {n_bo_iter}!")
     if keep_first_batch:
@@ -103,38 +103,38 @@ def bofn_pt_trial(
         if first_batch_algo == None and Constant_Liar == None:
             if second_batch_algo == "RAND":
                 second_batch = torch.rand([n_second_batch, input_dim])
-            elif second_batch_algo == "TSWH":
+            elif second_batch_algo == "TSFN":
                 first_layer_input = X.clone()
                 first_layer_output = network_output_at_X[:,:-1].clone()
                 second_layer_input = network_output_at_X[:,:-1].clone()
                 second_layer_output = objective_at_X.clone()
-                second_batch = get_second_batch_TS_whole(first_layer_input=first_layer_input,
+                second_batch = get_second_batch_TSFN(first_layer_input=first_layer_input,
                 first_layer_output=first_layer_output,second_layer_input=second_layer_input,
                 second_layer_output=second_layer_output,n_first_layer_nodes=n_first_layer_nodes,n_second_batch=n_second_batch)
-            elif second_batch_algo == "pEIFN":
+            elif second_batch_algo == "EIFN":
                 first_layer_input = X.clone()
                 first_layer_output = network_output_at_X[:,:-1].clone()
                 second_layer_input = network_output_at_X[:,:-1].clone()
                 second_layer_output = objective_at_X.clone()
-                second_batch = get_second_batch_pure_EIFN(first_layer_input=first_layer_input,
+                second_batch = get_second_batch_EIFN(first_layer_input=first_layer_input,
                 first_layer_output=first_layer_output,second_layer_input=second_layer_input,
                 second_layer_output=second_layer_output,n_first_layer_nodes=n_first_layer_nodes,n_second_batch=n_second_batch,
                 network_to_objective_transform=network_to_objective_transform)
-            elif second_batch_algo == "qEIWH":
+            elif second_batch_algo == "qEI":
                 first_layer_input = X.clone()
                 first_layer_output = network_output_at_X[:,:-1].clone()
                 second_layer_input = network_output_at_X[:,:-1].clone()
                 second_layer_output = objective_at_X.clone()
-                second_batch = get_second_batch_qEIWH(first_layer_input=first_layer_input,
+                second_batch = get_second_batch_qEI(first_layer_input=first_layer_input,
                 second_layer_output=second_layer_output,n_second_batch=n_second_batch,
                 network_to_objective_transform=network_to_objective_transform)
 
-            elif second_batch_algo == "aEIWH":
+            elif second_batch_algo == "aEI":
                 first_layer_input = X.clone()
                 first_layer_output = network_output_at_X[:,:-1].clone()
                 second_layer_input = network_output_at_X[:,:-1].clone()
                 second_layer_output = objective_at_X.clone()
-                second_batch = get_second_batch_aEIWH(first_layer_input=first_layer_input,
+                second_batch = get_second_batch_aEI(first_layer_input=first_layer_input,
                 second_layer_output=second_layer_output,n_second_batch=n_second_batch,
                 network_to_objective_transform=network_to_objective_transform)
             else:
@@ -251,7 +251,7 @@ def get_first_batch(
         network_to_objective_transform: Callable
 )-> Tensor:
     input_dim = first_layer_input.shape[-1]
-    if first_batch_algo == "EIFN":
+    if first_batch_algo == "pEIFN":
         model = GaussianProcessNetworkPartial(train_X = first_layer_input,
                                         train_Y_output_first_layer = first_layer_output,
                                         train_Y_input_second_layer = second_layer_input,
@@ -275,7 +275,7 @@ def get_first_batch(
             batch_size=1,
             posterior_mean = posterior_mean_function,
         )
-    elif first_batch_algo == "TSFN":
+    elif first_batch_algo == "pTSFN":
         first_layer_GPs = [None for i in range(n_first_layer_nodes)]
         first_layer_mlls = [None for k in range(n_first_layer_nodes)]
         for i in range(n_first_layer_nodes):
@@ -350,7 +350,7 @@ def get_second_batch(first_batch: Tensor,temp_second_layer_input: Tensor,model_s
             first_batch[arg_max_index+1:]))
     return new_second_batch
 
-def get_second_batch_TS_whole(
+def get_second_batch_TSFN(
     first_layer_input: Tensor,
     first_layer_output: Tensor,
     n_first_layer_nodes: int,
@@ -396,7 +396,7 @@ def get_second_batch_TS_whole(
             new_second_batch = torch.cat((new_second_batch,new_point),dim=0)
     return new_second_batch
 
-def get_second_batch_pure_EIFN(
+def get_second_batch_EIFN(
     first_layer_input: Tensor,
     first_layer_output: Tensor,
     n_first_layer_nodes: int,
@@ -431,7 +431,7 @@ def get_second_batch_pure_EIFN(
     )
     return new_second_batch
 
-def get_second_batch_qEIWH(first_layer_input: Tensor,
+def get_second_batch_qEI(first_layer_input: Tensor,
                 second_layer_output: Tensor,
                 n_second_batch: int,
                 network_to_objective_transform: Callable
@@ -459,7 +459,7 @@ def get_second_batch_qEIWH(first_layer_input: Tensor,
     )
     return new_second_batch
 
-def get_second_batch_aEIWH(first_layer_input: Tensor,
+def get_second_batch_aEI(first_layer_input: Tensor,
                 second_layer_output: Tensor,
                 n_second_batch: int,
                 network_to_objective_transform: Callable
