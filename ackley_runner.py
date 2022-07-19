@@ -30,13 +30,16 @@ network_to_objective_transform = GenericMCObjective(network_to_objective_transfo
 # Run experiment
 '''
 Specify algorithm:
-Possible choices for "first_batch_algo": EIFN / TSFN / None
+Possible choices for "first_batch_algo": pEIFN / pTSFN / None
 Possible choices for "Constant_Liar": NoCL / CLMAX / CLMIN / CLMEAN / None
-Possible choices for "second_batch_algo": qEI / TS / RAND / TSWH (Required for every algorithm)
+Possible choices for "second_batch_algo" (Required for every algorithm): 
+                                                                  - with pEIFN/pTSFN >> qEI / TS 
+                                                                  - without partial evaluation RAND / TSFN / aEI/ qEI / EIFN 
+                                                                  (first_batch_algo and CL must be None)
 '''
-first_batch_algo = "TSFN"
-Constant_Liar = "CLMAX"
-second_batch_algo = "TS"
+first_batch_algo = None
+Constant_Liar = None
+second_batch_algo = "EIFN"
 
 # number of candidates in first and second batches, respectively. Second batch candidates are selected from the first one
 n_first_batch = 10
